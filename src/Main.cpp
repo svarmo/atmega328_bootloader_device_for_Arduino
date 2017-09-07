@@ -87,7 +87,7 @@ void writeFuse (const byte newValue, const byte whichFuse) {}
 void stopProgramming() {}
 
 bool startProgramming() {
-    Serial.print (F("Attempting to enter ICSP programming mode ..."));
+    Serial.print(F("Attempting to enter ICSP programming mode ..."));
 
     pinMode(RESET, OUTPUT);
     digitalWrite(RESET, HIGH);  // ensure SS stays high for now
@@ -124,7 +124,7 @@ bool startProgramming() {
             }
         }
     } while (confirm != programAcknowledge);
-
+    Serial.println(F("ok"));
     return true;
 }
 void eraseMemory() {}
@@ -214,10 +214,10 @@ const bootloaderType bootloaders [] PROGMEM = {
         0xFF,         // fuse low byte: external clock, max start-up time
         0xDE,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader
         0x05,         // fuse extended byte: brown-out detection at 2.7V
-        0x2F
-    },       // lock bits: SPM is not allowed to write to the Boot Loader section.
+        0x2F          // lock bits: SPM is not allowed to write to the Boot Loader section.
+    },
 
-};  // end of bootloaders
+};
 
 bootloaderType currentBootloader;
 
@@ -228,16 +228,18 @@ void printFuseBytes() {
     byte lockFuseByte = readFuse(LOCK_FUSE);
     byte calibrationFuseByte = readFuse(CALIBRATION_FUSE);
 
-    Serial.print(F("LFuse = "));
-    Serial.println(lowFuseByte);
-    Serial.print(F("HFuse = "));
-    Serial.println(highFuseByte);
-    Serial.print(F("EFuse = "));
-    Serial.println(extFuseByte);
-    Serial.print(F("Lock byte = "));
-    Serial.println(lockFuseByte);
-    Serial.print(F("Clock calibration = "));
-    Serial.println(calibrationFuseByte);
+    Serial.println(F("\n*CURRENT FUSE VALUES*"));
+    Serial.print(F("Low_Fuse = "));
+    Serial.println(lowFuseByte, HEX);
+    Serial.print(F("High_fuse = "));
+    Serial.println(highFuseByte, HEX);
+    Serial.print(F("Ext_Fuse = "));
+    Serial.println(extFuseByte, HEX);
+    Serial.print(F("Lock_Fuse = "));
+    Serial.println(lockFuseByte, HEX);
+    Serial.print(F("Clock_Calibration_Fuse = "));
+    Serial.println(calibrationFuseByte, HEX);
+    Serial.println();
 }
 
 // burn the bootloader to the target device
@@ -265,7 +267,6 @@ void writeBootloader() {
     }
 
     byte lFuse = readFuse(LOW_FUSE);
-
     byte newlFuse = currentBootloader.lowFuse;
     byte newhFuse = currentBootloader.highFuse;
     byte newextFuse = currentBootloader.extFuse;
@@ -289,22 +290,16 @@ void writeBootloader() {
         len = sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex;
     }  // end of being Atmega328P
 
-    Serial.print(F("Bootloader address = 0x"));
-    Serial.println(addr, HEX);
-    Serial.print(F("Bootloader length = "));
-    Serial.print(len);
-    Serial.println(F(" bytes."));
-
     unsigned long oldPage = addr & pagemask;
 
-    // Automatically fix up fuse to run faster, then write to device
+    // Current Low Fuse does not match the bootloader's lowFuse setting, re-write it
     if (lFuse != newlFuse) {
         if ((lFuse & 0x80) == 0) {
             Serial.println(F("Clearing 'Divide clock by 8' fuse bit."));
         }
 
-        Serial.println(F("Fixing low fuse setting ..."));
-        writeFuse (newlFuse, LOW_FUSE);
+        Serial.print(F("Fixing low fuse setting ..."));
+        // writeFuse (newlFuse, LOW_FUSE);
         delay (1000);
         stopProgramming ();  // latch fuse
         if (!startProgramming ()) {
@@ -312,6 +307,22 @@ void writeBootloader() {
         }
         delay (1000);
     }
+
+
+    Serial.print(F("\nBootloader address = "));
+    Serial.println(addr, HEX);
+    Serial.print(F("Bootloader length = "));
+    Serial.println(len);
+
+    Serial.println(F("\n*NEW FUSE VALUES*"));
+    Serial.print(F("Low_Fuse = "));
+    Serial.println(newlFuse, HEX);
+    Serial.print(F("High_Fuse = "));
+    Serial.println(newhFuse, HEX);
+    Serial.print(F("Ext_Fuse = "));
+    Serial.println(newextFuse, HEX);
+    Serial.print(F("Lock_Fuse = "));
+    Serial.println(newlockByte);
 
     Serial.println(F("Erasing chip ..."));
     eraseMemory();
@@ -353,7 +364,7 @@ void writeBootloader() {
         return;  // don't change fuses if errors
     }  // end if
 
-    Serial.println(F("Writing fuses ..."));
+    Serial.println(F("\nWriting fuses ..."));
 
     writeFuse(newlFuse, LOW_FUSE);
     writeFuse(newhFuse, HIGH_FUSE);
@@ -367,6 +378,7 @@ void writeBootloader() {
 
 void getSignature() {
     // TODO: Just make sure it matches the expected signature
+    Serial.println(F("\nGetting signature"));
     byte sig[3];
     readSignature(sig);
     foundSig = -1;
@@ -377,10 +389,6 @@ void getSignature() {
             foundSig = j;
             Serial.print(F("Processor = "));
             Serial.println(currentSignature.desc);
-            if (currentSignature.timedWrites) {
-                // Leave this to debug for now
-                Serial.println(F("Writes are timed, not polled."));
-            }
             return;
         }
     }
@@ -399,7 +407,7 @@ void programBootloader() {
     if (startProgramming()) {
         getSignature();
         printFuseBytes();
-        //
+
         // if we found a signature try to write a bootloader
         if (foundSig != -1) {
             writeBootloader();
