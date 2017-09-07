@@ -19,12 +19,6 @@
 #define SCK 13
 #define SELECT_BUTTON_PIN 2
 
-
-/******************************/
-// Programing Utils stuff
-/******************************/
-
-
 /******************************/
 // ICSP Utils
 /******************************/
@@ -39,7 +33,7 @@ enum {
     // writeHighFuseByte = 0xA8,
     // writeExtendedFuseByte = 0xA4,
     //
-    // pollReady = 0xF0,
+    pollReady = 0xF0,
 
     programAcknowledge = 0x53,
 
@@ -51,23 +45,32 @@ enum {
     readLockByte = 0x58,          readLockByteArg2 = 0x00,
     //
     // readProgramMemory = 0x20,
-    // writeProgramMemory = 0x4C,
+    writeProgramMemory = 0x4C,
     loadExtendedAddressByte = 0x4D
     // loadProgramMemory = 0x40,
 };  // end of enum
 
-
-byte program (const byte b1, const byte b2 = 0, const byte b3 = 0, const byte b4 = 0);
-byte program (const byte b1, const byte b2, const byte b3, const byte b4) {
+void clearPage(); // Declared in Programing_Utils
+byte program(const byte b1, const byte b2 = 0, const byte b3 = 0, const byte b4 = 0);
+byte program(const byte b1, const byte b2, const byte b3, const byte b4) {
     noInterrupts();
 
-    SPI.transfer (b1);
-    SPI.transfer (b2);
-    SPI.transfer (b3);
-    byte b = SPI.transfer (b4);
+    SPI.transfer(b1);
+    SPI.transfer(b2);
+    SPI.transfer(b3);
+    byte b = SPI.transfer(b4);
 
-    interrupts ();
+    interrupts();
     return b;
+}
+
+// poll the target device until it is ready to be programmed
+void pollUntilReady() {
+    if (currentSignature.timedWrites) {
+        delay (10);  // at least 2 x WD_FLASH which is 4.5 mS
+    } else {
+        while ((program(pollReady) & 1) == 1) {}  // wait till ready
+    }
 }
 
 byte readFuse (const byte which) {
@@ -147,6 +150,43 @@ void initPins() {
     OCR1A =  0;                         // output every cycle
 }
 
+// commit page to flash memory
+void commitPage (unsigned long addr, bool showMessage) {
+    if (showMessage) {
+        Serial.print (F("Committing page starting at 0x"));
+        Serial.println (addr, HEX);
+    }
+    else {
+        // showProgress ();
+    }
+
+    addr >>= 1;  // turn into word address
+
+    // set the extended (most significant) address byte if necessary
+    byte MSB = (addr >> 16) & 0xFF;
+    if (MSB != lastAddressMSB) {
+        program (loadExtendedAddressByte, 0, MSB);
+        lastAddressMSB = MSB;
+    }
+
+    program(writeProgramMemory, highByte (addr), lowByte (addr));
+    pollUntilReady();
+
+    clearPage();  // clear ready for next page full
+}
+
+
+/******************************/
+// Programing Utils stuff
+/******************************/
+// clear entire temporary page to 0xFF in case we don't write to all of it
+void clearPage() {
+    unsigned int len = currentSignature.pageSize;
+    for (unsigned int i = 0; i < len; i++) {
+        writeFlash(i, 0xFF);
+    }
+}  // end of clearPage
+
 /************************/
 
 
@@ -224,8 +264,6 @@ void writeBootloader() {
         return;
     }
 
-    int i;
-
     byte lFuse = readFuse(LOW_FUSE);
 
     byte newlFuse = currentBootloader.lowFuse;
@@ -278,7 +316,7 @@ void writeBootloader() {
     Serial.println(F("Erasing chip ..."));
     eraseMemory();
     Serial.println(F("Writing bootloader ..."));
-    for (i = 0; i < len; i += 2) {
+    for (int i = 0; i < len; i += 2) {
         unsigned long thisPage = (addr + i) & pagemask;
         // page changed? commit old one
         if (thisPage != oldPage) {
@@ -299,18 +337,10 @@ void writeBootloader() {
     // count errors
     unsigned int errors = 0;
     // check each byte
-    for (i = 0; i < len; i++) {
+    for (int i = 0; i < len; i++) {
         byte found = readFlash (addr + i);
         byte expected = pgm_read_byte(bootloader + i);
         if (found != expected) {
-            if (errors <= 100) {
-                Serial.print(F("Verification error at address "));
-                Serial.print(addr + i, HEX);
-                Serial.print(F(". Got: "));
-                showHex (found);
-                Serial.print(F(" Expected: "));
-                showHex (expected, true);
-            }  // end of haven't shown 100 errors yet
             errors++;
         }  // end if error
     }  // end of for
@@ -320,8 +350,6 @@ void writeBootloader() {
     } else {
         Serial.print(errors, DEC);
         Serial.println(F(" verification error(s)."));
-        if (errors > 100)
-        Serial.println(F("First 100 shown."));
         return;  // don't change fuses if errors
     }  // end if
 
@@ -373,9 +401,9 @@ void programBootloader() {
         printFuseBytes();
         //
         // if we found a signature try to write a bootloader
-        // if (foundSig != -1) {
-        //     writeBootloader();
-        // }
+        if (foundSig != -1) {
+            writeBootloader();
+        }
         stopProgramming();
     }
 }
