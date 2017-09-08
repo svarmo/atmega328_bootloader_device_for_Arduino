@@ -27,11 +27,11 @@ enum {
     progamEnable = 0xAC,
 
     // writes are preceded by progamEnable
-    // chipErase = 0x80,
-    // writeLockByte = 0xE0,
-    // writeLowFuseByte = 0xA0,
-    // writeHighFuseByte = 0xA8,
-    // writeExtendedFuseByte = 0xA4,
+    chipErase = 0x80,
+    writeLockByte = 0xE0,
+    writeLowFuseByte = 0xA0,
+    writeHighFuseByte = 0xA8,
+    writeExtendedFuseByte = 0xA4,
     //
     pollReady = 0xF0,
 
@@ -44,13 +44,14 @@ enum {
     readHighFuseByte = 0x58,      readHighFuseByteArg2 = 0x08,
     readLockByte = 0x58,          readLockByteArg2 = 0x00,
     //
-    // readProgramMemory = 0x20,
+    readProgramMemory = 0x20,
     writeProgramMemory = 0x4C,
-    loadExtendedAddressByte = 0x4D
-    // loadProgramMemory = 0x40,
+    loadExtendedAddressByte = 0x4D,
+    loadProgramMemory = 0x40
 };  // end of enum
 
 void clearPage(); // Declared in Programing_Utils
+
 byte program(const byte b1, const byte b2 = 0, const byte b3 = 0, const byte b4 = 0);
 byte program(const byte b1, const byte b2, const byte b3, const byte b4) {
     noInterrupts();
@@ -83,8 +84,33 @@ byte readFuse (const byte which) {
     }
    return 0;
 }
-void writeFuse (const byte newValue, const byte whichFuse) {}
-void stopProgramming() {}
+
+const byte fuseCommands [4] = { writeLowFuseByte, writeHighFuseByte, writeExtendedFuseByte, writeLockByte };
+void writeFuse(const byte newValue, const byte whichFuse) {
+    if (newValue == 0) {
+        return;  // ignore
+    }
+
+    program(progamEnable, fuseCommands[whichFuse], 0, newValue);
+    pollUntilReady();
+}
+
+void stopProgramming() {
+    digitalWrite(RESET, LOW);
+    pinMode(RESET, INPUT);
+
+    SPI.end();
+    // turn off pull-ups, if any
+    digitalWrite(SCK, LOW);
+    digitalWrite(MOSI, LOW);
+    digitalWrite(MISO, LOW);
+
+    // set everything back to inputs
+    pinMode(SCK, INPUT);
+    pinMode(MOSI, INPUT);
+    pinMode(MISO, INPUT);
+    Serial.println (F("Programming mode off."));
+}
 
 bool startProgramming() {
     Serial.print(F("Attempting to enter ICSP programming mode ..."));
@@ -127,9 +153,33 @@ bool startProgramming() {
     Serial.println(F("ok"));
     return true;
 }
-void eraseMemory() {}
-void writeFlash(unsigned long addr, const byte data) {}
-byte readFlash(unsigned long addr) { return 0; }
+
+void eraseMemory() {
+    program(progamEnable, chipErase);  // erase it
+    delay(20);
+    pollUntilReady();
+    clearPage();  // clear temporary page
+}
+
+void writeFlash(unsigned long addr, const byte data) {
+    byte high = (addr & 1) ? 0x08 : 0;  // set if high byte wanted
+    addr >>= 1;  // turn into word address
+    program (loadProgramMemory | high, 0, lowByte (addr), data);
+}
+
+byte readFlash(unsigned long addr) {
+    byte high = (addr & 1) ? 0x08 : 0;  // set if high byte wanted
+    addr >>= 1;  // turn into word address
+
+    // set the extended (most significant) address byte if necessary
+    byte MSB = (addr >> 16) & 0xFF;
+    if (MSB != lastAddressMSB) {
+        program (loadExtendedAddressByte, 0, MSB);
+        lastAddressMSB = MSB;
+    }  // end if different MSB
+
+    return program (readProgramMemory | high, highByte (addr), lowByte (addr));
+}
 
 void readSignature(byte sig [3]) {
     for (byte i = 0; i < 3; i++) {
