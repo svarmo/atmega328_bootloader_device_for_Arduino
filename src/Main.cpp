@@ -19,12 +19,6 @@
 #define SCK 13
 #define SELECT_BUTTON_PIN 2
 
-
-/******************************/
-// Programing Utils stuff
-/******************************/
-
-
 /******************************/
 // ICSP Utils
 /******************************/
@@ -33,13 +27,13 @@ enum {
     progamEnable = 0xAC,
 
     // writes are preceded by progamEnable
-    // chipErase = 0x80,
-    // writeLockByte = 0xE0,
-    // writeLowFuseByte = 0xA0,
-    // writeHighFuseByte = 0xA8,
-    // writeExtendedFuseByte = 0xA4,
+    chipErase = 0x80,
+    writeLockByte = 0xE0,
+    writeLowFuseByte = 0xA0,
+    writeHighFuseByte = 0xA8,
+    writeExtendedFuseByte = 0xA4,
     //
-    // pollReady = 0xF0,
+    pollReady = 0xF0,
 
     programAcknowledge = 0x53,
 
@@ -50,24 +44,34 @@ enum {
     readHighFuseByte = 0x58,      readHighFuseByteArg2 = 0x08,
     readLockByte = 0x58,          readLockByteArg2 = 0x00,
     //
-    // readProgramMemory = 0x20,
-    // writeProgramMemory = 0x4C,
-    loadExtendedAddressByte = 0x4D
-    // loadProgramMemory = 0x40,
+    readProgramMemory = 0x20,
+    writeProgramMemory = 0x4C,
+    loadExtendedAddressByte = 0x4D,
+    loadProgramMemory = 0x40
 };  // end of enum
 
+void clearPage(); // Declared in Programing_Utils
 
-byte program (const byte b1, const byte b2 = 0, const byte b3 = 0, const byte b4 = 0);
-byte program (const byte b1, const byte b2, const byte b3, const byte b4) {
+byte program(const byte b1, const byte b2 = 0, const byte b3 = 0, const byte b4 = 0);
+byte program(const byte b1, const byte b2, const byte b3, const byte b4) {
     noInterrupts();
 
-    SPI.transfer (b1);
-    SPI.transfer (b2);
-    SPI.transfer (b3);
-    byte b = SPI.transfer (b4);
+    SPI.transfer(b1);
+    SPI.transfer(b2);
+    SPI.transfer(b3);
+    byte b = SPI.transfer(b4);
 
-    interrupts ();
+    interrupts();
     return b;
+}
+
+// poll the target device until it is ready to be programmed
+void pollUntilReady() {
+    if (currentSignature.timedWrites) {
+        delay (10);  // at least 2 x WD_FLASH which is 4.5 mS
+    } else {
+        while ((program(pollReady) & 1) == 1) {}  // wait till ready
+    }
 }
 
 byte readFuse (const byte which) {
@@ -80,11 +84,36 @@ byte readFuse (const byte which) {
     }
    return 0;
 }
-void writeFuse (const byte newValue, const byte whichFuse) {}
-void stopProgramming() {}
+
+const byte fuseCommands [4] = { writeLowFuseByte, writeHighFuseByte, writeExtendedFuseByte, writeLockByte };
+void writeFuse(const byte newValue, const byte whichFuse) {
+    if (newValue == 0) {
+        return;  // ignore
+    }
+
+    program(progamEnable, fuseCommands[whichFuse], 0, newValue);
+    pollUntilReady();
+}
+
+void stopProgramming() {
+    digitalWrite(RESET, LOW);
+    pinMode(RESET, INPUT);
+
+    SPI.end();
+    // turn off pull-ups, if any
+    digitalWrite(SCK, LOW);
+    digitalWrite(MOSI, LOW);
+    digitalWrite(MISO, LOW);
+
+    // set everything back to inputs
+    pinMode(SCK, INPUT);
+    pinMode(MOSI, INPUT);
+    pinMode(MISO, INPUT);
+    Serial.println (F("Programming mode off."));
+}
 
 bool startProgramming() {
-    Serial.print (F("Attempting to enter ICSP programming mode ..."));
+    Serial.print(F("Attempting to enter ICSP programming mode ..."));
 
     pinMode(RESET, OUTPUT);
     digitalWrite(RESET, HIGH);  // ensure SS stays high for now
@@ -121,12 +150,36 @@ bool startProgramming() {
             }
         }
     } while (confirm != programAcknowledge);
-
+    Serial.println(F("ok"));
     return true;
 }
-void eraseMemory() {}
-void writeFlash(unsigned long addr, const byte data) {}
-byte readFlash(unsigned long addr) { return 0; }
+
+void eraseMemory() {
+    program(progamEnable, chipErase);  // erase it
+    delay(20);
+    pollUntilReady();
+    clearPage();  // clear temporary page
+}
+
+void writeFlash(unsigned long addr, const byte data) {
+    byte high = (addr & 1) ? 0x08 : 0;  // set if high byte wanted
+    addr >>= 1;  // turn into word address
+    program (loadProgramMemory | high, 0, lowByte (addr), data);
+}
+
+byte readFlash(unsigned long addr) {
+    byte high = (addr & 1) ? 0x08 : 0;  // set if high byte wanted
+    addr >>= 1;  // turn into word address
+
+    // set the extended (most significant) address byte if necessary
+    byte MSB = (addr >> 16) & 0xFF;
+    if (MSB != lastAddressMSB) {
+        program (loadExtendedAddressByte, 0, MSB);
+        lastAddressMSB = MSB;
+    }  // end if different MSB
+
+    return program (readProgramMemory | high, highByte (addr), lowByte (addr));
+}
 
 void readSignature(byte sig [3]) {
     for (byte i = 0; i < 3; i++) {
@@ -146,6 +199,35 @@ void initPins() {
     TCCR1B = bit (WGM12) | bit (CS10);  // CTC, no prescaling
     OCR1A =  0;                         // output every cycle
 }
+
+// commit page to flash memory
+void commitPage (unsigned long addr, bool showMessage) {
+    addr >>= 1;  // turn into word address
+
+    // set the extended (most significant) address byte if necessary
+    byte MSB = (addr >> 16) & 0xFF;
+    if (MSB != lastAddressMSB) {
+        program (loadExtendedAddressByte, 0, MSB);
+        lastAddressMSB = MSB;
+    }
+
+    program(writeProgramMemory, highByte (addr), lowByte (addr));
+    pollUntilReady();
+
+    clearPage();  // clear ready for next page full
+}
+
+
+/******************************/
+// Programing Utils stuff
+/******************************/
+// clear entire temporary page to 0xFF in case we don't write to all of it
+void clearPage() {
+    unsigned int len = currentSignature.pageSize;
+    for (unsigned int i = 0; i < len; i++) {
+        writeFlash(i, 0xFF);
+    }
+}  // end of clearPage
 
 /************************/
 
@@ -174,10 +256,10 @@ const bootloaderType bootloaders [] PROGMEM = {
         0xFF,         // fuse low byte: external clock, max start-up time
         0xDE,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader
         0x05,         // fuse extended byte: brown-out detection at 2.7V
-        0x2F
-    },       // lock bits: SPM is not allowed to write to the Boot Loader section.
+        0x2F          // lock bits: SPM is not allowed to write to the Boot Loader section.
+    },
 
-};  // end of bootloaders
+};
 
 bootloaderType currentBootloader;
 
@@ -188,16 +270,18 @@ void printFuseBytes() {
     byte lockFuseByte = readFuse(LOCK_FUSE);
     byte calibrationFuseByte = readFuse(CALIBRATION_FUSE);
 
-    Serial.print(F("LFuse = "));
-    Serial.println(lowFuseByte);
-    Serial.print(F("HFuse = "));
-    Serial.println(highFuseByte);
-    Serial.print(F("EFuse = "));
-    Serial.println(extFuseByte);
-    Serial.print(F("Lock byte = "));
-    Serial.println(lockFuseByte);
-    Serial.print(F("Clock calibration = "));
-    Serial.println(calibrationFuseByte);
+    Serial.println(F("\n*CURRENT FUSE VALUES*"));
+    Serial.print(F("Low_Fuse = "));
+    Serial.println(lowFuseByte, HEX);
+    Serial.print(F("High_fuse = "));
+    Serial.println(highFuseByte, HEX);
+    Serial.print(F("Ext_Fuse = "));
+    Serial.println(extFuseByte, HEX);
+    Serial.print(F("Lock_Fuse = "));
+    Serial.println(lockFuseByte, HEX);
+    Serial.print(F("Clock_Calibration_Fuse = "));
+    Serial.println(calibrationFuseByte, HEX);
+    Serial.println();
 }
 
 // burn the bootloader to the target device
@@ -224,10 +308,7 @@ void writeBootloader() {
         return;
     }
 
-    int i;
-
     byte lFuse = readFuse(LOW_FUSE);
-
     byte newlFuse = currentBootloader.lowFuse;
     byte newhFuse = currentBootloader.highFuse;
     byte newextFuse = currentBootloader.extFuse;
@@ -251,22 +332,16 @@ void writeBootloader() {
         len = sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex;
     }  // end of being Atmega328P
 
-    Serial.print(F("Bootloader address = 0x"));
-    Serial.println(addr, HEX);
-    Serial.print(F("Bootloader length = "));
-    Serial.print(len);
-    Serial.println(F(" bytes."));
-
     unsigned long oldPage = addr & pagemask;
 
-    // Automatically fix up fuse to run faster, then write to device
+    // Current Low Fuse does not match the bootloader's lowFuse setting, re-write it
     if (lFuse != newlFuse) {
         if ((lFuse & 0x80) == 0) {
             Serial.println(F("Clearing 'Divide clock by 8' fuse bit."));
         }
 
-        Serial.println(F("Fixing low fuse setting ..."));
-        writeFuse (newlFuse, LOW_FUSE);
+        Serial.print(F("Fixing low fuse setting ..."));
+        // writeFuse (newlFuse, LOW_FUSE);
         delay (1000);
         stopProgramming ();  // latch fuse
         if (!startProgramming ()) {
@@ -275,10 +350,26 @@ void writeBootloader() {
         delay (1000);
     }
 
+
+    Serial.print(F("\nBootloader address = "));
+    Serial.println(addr, HEX);
+    Serial.print(F("Bootloader length = "));
+    Serial.println(len);
+
+    Serial.println(F("\n*NEW FUSE VALUES*"));
+    Serial.print(F("Low_Fuse = "));
+    Serial.println(newlFuse, HEX);
+    Serial.print(F("High_Fuse = "));
+    Serial.println(newhFuse, HEX);
+    Serial.print(F("Ext_Fuse = "));
+    Serial.println(newextFuse, HEX);
+    Serial.print(F("Lock_Fuse = "));
+    Serial.println(newlockByte, HEX);
+
     Serial.println(F("Erasing chip ..."));
     eraseMemory();
     Serial.println(F("Writing bootloader ..."));
-    for (i = 0; i < len; i += 2) {
+    for (int i = 0; i < len; i += 2) {
         unsigned long thisPage = (addr + i) & pagemask;
         // page changed? commit old one
         if (thisPage != oldPage) {
@@ -299,18 +390,10 @@ void writeBootloader() {
     // count errors
     unsigned int errors = 0;
     // check each byte
-    for (i = 0; i < len; i++) {
+    for (int i = 0; i < len; i++) {
         byte found = readFlash (addr + i);
         byte expected = pgm_read_byte(bootloader + i);
         if (found != expected) {
-            if (errors <= 100) {
-                Serial.print(F("Verification error at address "));
-                Serial.print(addr + i, HEX);
-                Serial.print(F(". Got: "));
-                showHex (found);
-                Serial.print(F(" Expected: "));
-                showHex (expected, true);
-            }  // end of haven't shown 100 errors yet
             errors++;
         }  // end if error
     }  // end of for
@@ -320,12 +403,10 @@ void writeBootloader() {
     } else {
         Serial.print(errors, DEC);
         Serial.println(F(" verification error(s)."));
-        if (errors > 100)
-        Serial.println(F("First 100 shown."));
         return;  // don't change fuses if errors
     }  // end if
 
-    Serial.println(F("Writing fuses ..."));
+    Serial.println(F("\nWriting fuses ..."));
 
     writeFuse(newlFuse, LOW_FUSE);
     writeFuse(newhFuse, HIGH_FUSE);
@@ -339,6 +420,7 @@ void writeBootloader() {
 
 void getSignature() {
     // TODO: Just make sure it matches the expected signature
+    Serial.println(F("\nGetting signature"));
     byte sig[3];
     readSignature(sig);
     foundSig = -1;
@@ -349,10 +431,6 @@ void getSignature() {
             foundSig = j;
             Serial.print(F("Processor = "));
             Serial.println(currentSignature.desc);
-            if (currentSignature.timedWrites) {
-                // Leave this to debug for now
-                Serial.println(F("Writes are timed, not polled."));
-            }
             return;
         }
     }
@@ -371,11 +449,11 @@ void programBootloader() {
     if (startProgramming()) {
         getSignature();
         printFuseBytes();
-        //
+
         // if we found a signature try to write a bootloader
-        // if (foundSig != -1) {
-        //     writeBootloader();
-        // }
+        if (foundSig != -1) {
+            writeBootloader();
+        }
         stopProgramming();
     }
 }
