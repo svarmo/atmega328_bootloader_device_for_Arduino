@@ -6,17 +6,19 @@
 #define Programmer_h
 
 #include "Arduino.h"
-#include <SPI.h>
+#include "SerialUtility.h"
 
-#define CLOCKOUT 9
-#define RESET 10
-#define SCK 13
-#define ENTER_PROGRAMMING_ATTEMPTS 50
+// const byte fuseCommands [4] = { writeLowFuseByte, writeHighFuseByte, writeExtendedFuseByte, writeLockByte };
 
-/* Functions */
-void initPins();
-byte program(const byte b1, const byte b2 = 0, const byte b3 = 0, const byte b4 = 0);
-void stopProgramming();
-bool startProgramming();
+void clearPage();
+void pollUntilReady();
+byte readFuse (const byte which);
+void writeFuse(const byte newValue, const byte whichFuse);
+void eraseMemory();
+void writeFlash(unsigned long addr, const byte data);
+byte readFlash(unsigned long addr);
+void readSignature(byte sig [3]);
+void commitPage (unsigned long addr, bool showMessage);
+void getSignature();
 
 #endif

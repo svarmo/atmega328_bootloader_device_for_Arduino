@@ -1,85 +1,120 @@
+
 /*
  *  Copyright (c) 2017 Svarmo
  */
 #include "Programmer.h"
 #include "Constants.h"
 
-void initPins() {
-    // set up 8 MHz timer on pin 9
-    pinMode(CLOCKOUT, OUTPUT);
-    // set up Timer 1
-    TCCR1A = bit (COM1A0);              // toggle OC1A on Compare Match
-    TCCR1B = bit (WGM12) | bit (CS10);  // CTC, no prescaling
-    OCR1A =  0;                         // output every cycle
+int foundSig = -1;
+signatureType currentSignature;
+byte lastAddressMSB = 0;
+
+void pollUntilReady() {
+    if (currentSignature.timedWrites) {
+        delay (10);  // at least 2 x WD_FLASH which is 4.5 mS
+    } else {
+        while ((program(pollReady) & 1) == 1) {}  // wait till ready
+    }
 }
 
-byte program(const byte b1, const byte b2, const byte b3, const byte b4) {
-    noInterrupts();
-
-    SPI.transfer(b1);
-    SPI.transfer(b2);
-    SPI.transfer(b3);
-    byte b = SPI.transfer(b4);
-
-    interrupts();
-    return b;
+byte readFuse (const byte which) {
+    switch (which) {
+        case LOW_FUSE:         return program(readLowFuseByte, readLowFuseByteArg2);
+        case HIGH_FUSE:        return program(readHighFuseByte, readHighFuseByteArg2);
+        case EXT_FUSE:         return program(readExtendedFuseByte, readExtendedFuseByteArg2);
+        case LOCK_FUSE:        return program(readLockByte, readLockByteArg2);
+        case CALIBRATION_FUSE: return program(readCalibrationByte);
+    }
+   return 0;
 }
 
-bool startProgramming() {
-    Serial.print(F("Attempting to enter ICSP programming mode ..."));
+const byte fuseCommands [4] = { writeLowFuseByte, writeHighFuseByte, writeExtendedFuseByte, writeLockByte };
+void writeFuse(const byte newValue, const byte whichFuse) {
+    if (newValue == 0) {
+        return;  // ignore
+    }
 
-    pinMode(RESET, OUTPUT);
-    digitalWrite(RESET, HIGH);  // ensure SS stays high for now
-    SPI.begin();
-    SPI.setClockDivider (SPI_CLOCK_DIV64);
-    pinMode (SCK, OUTPUT);
-
-    unsigned int timeout = 0;
-    byte confirm;
-    do {
-        delay(100);     // regrouping pause
-        noInterrupts(); // ensure SCK low
-        digitalWrite(SCK, LOW);
-
-        // then pulse reset, see page 309 of datasheet
-        digitalWrite(RESET, HIGH);
-        delayMicroseconds(10);  // pulse for at least 2 clock cycles
-        digitalWrite(RESET, LOW);
-        interrupts();
-        delay(25);  // wait at least 20 mS
-        noInterrupts();
-
-        SPI.transfer(progamEnable);
-        SPI.transfer(programAcknowledge);
-        confirm = SPI.transfer(0);
-        SPI.transfer(0);
-        interrupts();
-
-        if (confirm != programAcknowledge) {
-            Serial.print (".");
-            if (timeout++ >= ENTER_PROGRAMMING_ATTEMPTS) {
-                Serial.println(F("\nFailed to enter programming mode. Double-check wiring!"));
-                return false;
-            }
-        }
-    } while (confirm != programAcknowledge);
-    Serial.println(F("ok"));
-    return true;
+    program(progamEnable, fuseCommands[whichFuse], 0, newValue);
+    pollUntilReady();
 }
 
-void stopProgramming() {
-    digitalWrite(RESET, LOW);
-    // pinMode(RESET, INPUT);
+void eraseMemory() {
+    program(progamEnable, chipErase);  // erase it
+    delay(20);
+    pollUntilReady();
+    clearPage();  // clear temporary page
+}
 
-    SPI.end();
-    // turn off pull-ups, if any
-    digitalWrite(SCK, LOW);
-    digitalWrite(MOSI, LOW);
-    digitalWrite(MISO, LOW);
+void writeFlash(unsigned long addr, const byte data) {
+    byte high = (addr & 1) ? 0x08 : 0;  // set if high byte wanted
+    addr >>= 1;  // turn into word address
+    program(loadProgramMemory | high, 0, lowByte (addr), data);
+}
 
-    // set everything back to inputs
-    pinMode(SCK, INPUT);
-    pinMode(MOSI, INPUT);
-    pinMode(MISO, INPUT);
-    Serial.println (F("Programming mode off."));
+byte readFlash(unsigned long addr) {
+    byte high = (addr & 1) ? 0x08 : 0;  // set if high byte wanted
+    addr >>= 1;  // turn into word address
+
+    // set the extended (most significant) address byte if necessary
+    byte MSB = (addr >> 16) & 0xFF;
+    if (MSB != lastAddressMSB) {
+        program(loadExtendedAddressByte, 0, MSB);
+        lastAddressMSB = MSB;
+    }
+
+    return program(readProgramMemory | high, highByte (addr), lowByte (addr));
+}
+
+void readSignature(byte sig [3]) {
+    for (byte i = 0; i < 3; i++) {
+        sig [i] = program(readSignatureByte, 0, i);
+    }
+
+    // make sure extended address is zero to match lastAddressMSB variable
+    program(loadExtendedAddressByte, 0, 0);
+    lastAddressMSB = 0;
+}
+
+// commit page to flash memory
+void commitPage (unsigned long addr, bool showMessage) {
+    addr >>= 1;  // turn into word address
+
+    // set the extended (most significant) address byte if necessary
+    byte MSB = (addr >> 16) & 0xFF;
+    if (MSB != lastAddressMSB) {
+        program (loadExtendedAddressByte, 0, MSB);
+        lastAddressMSB = MSB;
+    }
+
+    program(writeProgramMemory, highByte (addr), lowByte (addr));
+    pollUntilReady();
+
+    clearPage();  // clear ready for next page full
+}
+
+// clear entire temporary page to 0xFF in case we don't write to all of it
+void clearPage() {
+    unsigned int len = currentSignature.pageSize;
+    for (unsigned int i = 0; i < len; i++) {
+        writeFlash(i, 0xFF);
+    }
+}  // end of clearPage
+
+void getSignature() {
+    // TODO: Just make sure it matches the expected signature
+    // Serial.println(F("\nGetting signature"));
+    // byte sig[3];
+    // readSignature(sig);
+    // // foundSig = -1;
+    // // for (int j = 0; j < NUMITEMS (signatures); j++) {
+    // //     memcpy_P(&currentSignature, &signatures[j], sizeof currentSignature);
+    // //
+    // //     if (memcmp(sig, currentSignature.sig, sizeof sig) == 0) {
+    // //         foundSig = j;
+    // //         Serial.print(F("Processor = "));
+    // //         Serial.println(currentSignature.desc);
+    // //         return;
+    // //     }
+    // // }
+    // Serial.println(F("Unrecogized signature."));
 }
