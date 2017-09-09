@@ -7,63 +7,67 @@
 #include <avr/pgmspace.h>
 
 #include "Signatures.h"
-#include "General_Stuff.h"
+#include "Constants.h"
 #include "bootloader_lilypad328.h"
 #include "bootloader_atmega328.h"
+#include "Programmer.h"
 
 #define BAUD_RATE 9600
-#define ENTER_PROGRAMMING_ATTEMPTS 50
 
-#define CLOCKOUT 9
-#define RESET 10
-#define SCK 13
+// #define CLOCKOUT 9
+// #define RESET 10
+// #define SCK 13
 #define SELECT_BUTTON_PIN 2
+
+int foundSig = -1;
+signatureType currentSignature;
+byte lastAddressMSB = 0;
 
 /******************************/
 // ICSP Utils
 /******************************/
 // programming commands to send via SPI to the chip
-enum {
-    progamEnable = 0xAC,
-
-    // writes are preceded by progamEnable
-    chipErase = 0x80,
-    writeLockByte = 0xE0,
-    writeLowFuseByte = 0xA0,
-    writeHighFuseByte = 0xA8,
-    writeExtendedFuseByte = 0xA4,
-    //
-    pollReady = 0xF0,
-
-    programAcknowledge = 0x53,
-
-    readSignatureByte = 0x30,
-    readCalibrationByte = 0x38,
-    readLowFuseByte = 0x50,       readLowFuseByteArg2 = 0x00,
-    readExtendedFuseByte = 0x50,  readExtendedFuseByteArg2 = 0x08,
-    readHighFuseByte = 0x58,      readHighFuseByteArg2 = 0x08,
-    readLockByte = 0x58,          readLockByteArg2 = 0x00,
-    //
-    readProgramMemory = 0x20,
-    writeProgramMemory = 0x4C,
-    loadExtendedAddressByte = 0x4D,
-    loadProgramMemory = 0x40
-};  // end of enum
+// enum {
+//     progamEnable = 0xAC,
+//
+//     // writes are preceded by progamEnable
+//     chipErase = 0x80,
+//     writeLockByte = 0xE0,
+//     writeLowFuseByte = 0xA0,
+//     writeHighFuseByte = 0xA8,
+//     writeExtendedFuseByte = 0xA4,
+//     //
+//     pollReady = 0xF0,
+//
+//     programAcknowledge = 0x53,
+//
+//     readSignatureByte = 0x30,
+//     readCalibrationByte = 0x38,
+//     readLowFuseByte = 0x50,       readLowFuseByteArg2 = 0x00,
+//     readExtendedFuseByte = 0x50,  readExtendedFuseByteArg2 = 0x08,
+//     readHighFuseByte = 0x58,      readHighFuseByteArg2 = 0x08,
+//     readLockByte = 0x58,          readLockByteArg2 = 0x00,
+//     //
+//     readProgramMemory = 0x20,
+//     writeProgramMemory = 0x4C,
+//     loadExtendedAddressByte = 0x4D,
+//     loadProgramMemory = 0x40
+// };  // end of enum
 
 void clearPage(); // Declared in Programing_Utils
 
-byte program(const byte b1, const byte b2 = 0, const byte b3 = 0, const byte b4 = 0);
-byte program(const byte b1, const byte b2, const byte b3, const byte b4) {
-    noInterrupts();
-
-    SPI.transfer(b1);
-    SPI.transfer(b2);
-    SPI.transfer(b3);
-    byte b = SPI.transfer(b4);
-
-    interrupts();
-    return b;
-}
+// byte program(const byte b1, const byte b2 = 0, const byte b3 = 0, const byte b4 = 0);
+// byte program(const byte b1, const byte b2, const byte b3, const byte b4) {
+//     noInterrupts();
+//
+//     SPI.transfer(b1);
+//     SPI.transfer(b2);
+//     SPI.transfer(b3);
+//     byte b = SPI.transfer(b4);
+//
+//     interrupts();
+//     return b;
+// }
 
 // poll the target device until it is ready to be programmed
 void pollUntilReady() {
@@ -95,64 +99,64 @@ void writeFuse(const byte newValue, const byte whichFuse) {
     pollUntilReady();
 }
 
-void stopProgramming() {
-    digitalWrite(RESET, LOW);
-    pinMode(RESET, INPUT);
+// void stopProgramming() {
+//     digitalWrite(RESET, LOW);
+//     pinMode(RESET, INPUT);
+//
+//     SPI.end();
+//     // turn off pull-ups, if any
+//     digitalWrite(SCK, LOW);
+//     digitalWrite(MOSI, LOW);
+//     digitalWrite(MISO, LOW);
+//
+//     // set everything back to inputs
+//     pinMode(SCK, INPUT);
+//     pinMode(MOSI, INPUT);
+//     pinMode(MISO, INPUT);
+//     Serial.println (F("Programming mode off."));
+// }
 
-    SPI.end();
-    // turn off pull-ups, if any
-    digitalWrite(SCK, LOW);
-    digitalWrite(MOSI, LOW);
-    digitalWrite(MISO, LOW);
-
-    // set everything back to inputs
-    pinMode(SCK, INPUT);
-    pinMode(MOSI, INPUT);
-    pinMode(MISO, INPUT);
-    Serial.println (F("Programming mode off."));
-}
-
-bool startProgramming() {
-    Serial.print(F("Attempting to enter ICSP programming mode ..."));
-
-    pinMode(RESET, OUTPUT);
-    digitalWrite(RESET, HIGH);  // ensure SS stays high for now
-    SPI.begin();
-    SPI.setClockDivider (SPI_CLOCK_DIV64);
-    pinMode (SCK, OUTPUT);
-
-    unsigned int timeout = 0;
-    byte confirm;
-    do {
-        delay(100);     // regrouping pause
-        noInterrupts(); // ensure SCK low
-        digitalWrite(SCK, LOW);
-
-        // then pulse reset, see page 309 of datasheet
-        digitalWrite(RESET, HIGH);
-        delayMicroseconds(10);  // pulse for at least 2 clock cycles
-        digitalWrite(RESET, LOW);
-        interrupts();
-        delay(25);  // wait at least 20 mS
-        noInterrupts();
-
-        SPI.transfer(progamEnable);
-        SPI.transfer(programAcknowledge);
-        confirm = SPI.transfer(0);
-        SPI.transfer(0);
-        interrupts();
-
-        if (confirm != programAcknowledge) {
-            Serial.print (".");
-            if (timeout++ >= ENTER_PROGRAMMING_ATTEMPTS) {
-                Serial.println(F("\nFailed to enter programming mode. Double-check wiring!"));
-                return false;
-            }
-        }
-    } while (confirm != programAcknowledge);
-    Serial.println(F("ok"));
-    return true;
-}
+// bool startProgramming() {
+//     Serial.print(F("Attempting to enter ICSP programming mode ..."));
+//
+//     pinMode(RESET, OUTPUT);
+//     digitalWrite(RESET, HIGH);  // ensure SS stays high for now
+//     SPI.begin();
+//     SPI.setClockDivider (SPI_CLOCK_DIV64);
+//     pinMode (SCK, OUTPUT);
+//
+//     unsigned int timeout = 0;
+//     byte confirm;
+//     do {
+//         delay(100);     // regrouping pause
+//         noInterrupts(); // ensure SCK low
+//         digitalWrite(SCK, LOW);
+//
+//         // then pulse reset, see page 309 of datasheet
+//         digitalWrite(RESET, HIGH);
+//         delayMicroseconds(10);  // pulse for at least 2 clock cycles
+//         digitalWrite(RESET, LOW);
+//         interrupts();
+//         delay(25);  // wait at least 20 mS
+//         noInterrupts();
+//
+//         SPI.transfer(progamEnable);
+//         SPI.transfer(programAcknowledge);
+//         confirm = SPI.transfer(0);
+//         SPI.transfer(0);
+//         interrupts();
+//
+//         if (confirm != programAcknowledge) {
+//             Serial.print (".");
+//             if (timeout++ >= ENTER_PROGRAMMING_ATTEMPTS) {
+//                 Serial.println(F("\nFailed to enter programming mode. Double-check wiring!"));
+//                 return false;
+//             }
+//         }
+//     } while (confirm != programAcknowledge);
+//     Serial.println(F("ok"));
+//     return true;
+// }
 
 void eraseMemory() {
     program(progamEnable, chipErase);  // erase it
@@ -164,7 +168,7 @@ void eraseMemory() {
 void writeFlash(unsigned long addr, const byte data) {
     byte high = (addr & 1) ? 0x08 : 0;  // set if high byte wanted
     addr >>= 1;  // turn into word address
-    program (loadProgramMemory | high, 0, lowByte (addr), data);
+    program(loadProgramMemory | high, 0, lowByte (addr), data);
 }
 
 byte readFlash(unsigned long addr) {
@@ -174,11 +178,11 @@ byte readFlash(unsigned long addr) {
     // set the extended (most significant) address byte if necessary
     byte MSB = (addr >> 16) & 0xFF;
     if (MSB != lastAddressMSB) {
-        program (loadExtendedAddressByte, 0, MSB);
+        program(loadExtendedAddressByte, 0, MSB);
         lastAddressMSB = MSB;
-    }  // end if different MSB
+    }
 
-    return program (readProgramMemory | high, highByte (addr), lowByte (addr));
+    return program(readProgramMemory | high, highByte (addr), lowByte (addr));
 }
 
 void readSignature(byte sig [3]) {
@@ -191,24 +195,24 @@ void readSignature(byte sig [3]) {
     lastAddressMSB = 0;
 }
 
-void initPins() {
-    // set up 8 MHz timer on pin 9
-    pinMode (CLOCKOUT, OUTPUT);
-    // set up Timer 1
-    TCCR1A = bit (COM1A0);              // toggle OC1A on Compare Match
-    TCCR1B = bit (WGM12) | bit (CS10);  // CTC, no prescaling
-    OCR1A =  0;                         // output every cycle
-}
+// void initPins() {
+//     // set up 8 MHz timer on pin 9
+//     pinMode (CLOCKOUT, OUTPUT);
+//     // set up Timer 1
+//     TCCR1A = bit (COM1A0);              // toggle OC1A on Compare Match
+//     TCCR1B = bit (WGM12) | bit (CS10);  // CTC, no prescaling
+//     OCR1A =  0;                         // output every cycle
+// }
 
 // commit page to flash memory
 void commitPage (unsigned long addr, bool showMessage) {
-    if (showMessage) {
-        Serial.print (F("Committing page starting at 0x"));
-        Serial.println (addr, HEX);
-    }
-    else {
-        // showProgress ();
-    }
+    // if (showMessage) {
+    //     Serial.print (F("Committing page starting at 0x"));
+    //     Serial.println (addr, HEX);
+    // }
+    // else {
+    //     // showProgress ();
+    // }
 
     addr >>= 1;  // turn into word address
 
