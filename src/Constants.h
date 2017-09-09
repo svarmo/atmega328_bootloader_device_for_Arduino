@@ -82,8 +82,8 @@ const bootloaderType atMega328Bootloader PROGMEM = {
     sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex, // size of bootloader image
     0xE2,         // fuse low byte: internal 8 MHz oscillator, max start-up time
     0xDA,         // fuse high byte: SPI enable, boot into bootloader, 2048 byte bootloader
-    0x05,         // fuse extended byte: brown-out detection at 2.7V
-    0x2F          // lock bits: SPM is not allowed to write to the Boot Loader section.
+    0xFD,         // fuse extended byte: brown-out detection at 2.7V
+    0xEF          // lock bits: SPM is not allowed to write to the Boot Loader section.
 };
 
 #endif

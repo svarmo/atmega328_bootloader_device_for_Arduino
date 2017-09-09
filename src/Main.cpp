@@ -58,7 +58,7 @@ void writeBootloader() {
         }
 
         Serial.print(F("Fixing low fuse setting ..."));
-        // writeFuse (newlFuse, LOW_FUSE);
+        writeFuse (newlFuse, LOW_FUSE);
         delay (1000);
         stopProgramming ();  // latch fuse
         if (!startProgramming ()) {
@@ -75,7 +75,7 @@ void writeBootloader() {
     Serial.print(F("Ext_Fuse = "));
     Serial.println(newextFuse, HEX);
     Serial.print(F("Lock_Fuse = "));
-    Serial.println(newlockByte);
+    Serial.println(newlockByte, HEX);
 
     Serial.println(F("Erasing chip ..."));
     eraseMemory();
@@ -87,8 +87,8 @@ void writeBootloader() {
             commitPage (oldPage, true);
             oldPage = thisPage;
         }
-        writeFlash(addr + i, pgm_read_byte(atMega328Bootloader.bootloader));
-        writeFlash(addr + i + 1, pgm_read_byte(atMega328Bootloader.bootloader + i));
+        writeFlash(addr + i, pgm_read_byte(atMega328Bootloader.bootloader + i));
+        writeFlash(addr + i + 1, pgm_read_byte(atMega328Bootloader.bootloader + i + 1));
     }  // end while doing each word
 
     // commit final page
