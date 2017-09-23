@@ -38,77 +38,60 @@ static const unsigned char PROGMEM logo16_glcd_bmp[] =
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
 
-byte getOledScreenAddress() {
-    byte address = 0x00;
-    for(address = 1; address < 127; address++) {
-        Wire.beginTransmission(address);
-        byte error = Wire.endTransmission();
+// byte getOledScreenAddress() {
+//     byte address = 0x00;
+//     for(address = 1; address < 127; address++) {
+//         Serial.print("*");
+//         Wire.beginTransmission(address);
+//         byte error = Wire.endTransmission();
+//
+//         if (error == 0) {
+//             Serial.print("Screen address 0x");
+//             Serial.println(address, HEX);
+//             return address;
+//         }
+//     }
+//
+//     Serial.println("No address found");
+//     return 0x00;
+// }
 
-        if (error == 0) {
-            Serial.print("Screen address 0x");
-            Serial.println(address, HEX);
-            return address;
-        }
-    }
-
-    Serial.println("No address found");
-    return 0x00;
-}
-
-void setupOledScreen(byte address) {
+void setupOledScreen() {
     Serial.println("Screen sequence");
+    display.begin(0x3C);
 
-    display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    display.display();
+    delay(2000);
+
+    // Clear the buffer.
+    display.clearDisplay();
+
+    // draw a white circle, 10 pixel radius
+    display.fillCircle(display.width()/2, display.height()/2, 10, WHITE);
     display.display();
     delay(2000);
     display.clearDisplay();
 
-    // draw a single pixel
-  display.drawPixel(10, 10, WHITE);
-  // Show the display buffer on the hardware.
-  // NOTE: You _must_ call display after making any drawing commands
-  // to make them visible on the display hardware!
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // draw a white circle, 10 pixel radius
-  display.fillCircle(display.width()/2, display.height()/2, 10, WHITE);
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // text display tests
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
-  display.println("Hello, world!");
-  display.setTextColor(BLACK, WHITE); // 'inverted' text
-  display.println(3.141592);
-  display.setTextSize(2);
-  display.setTextColor(WHITE);
-  display.print("0x"); display.println(0xDEADBEEF, HEX);
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // invert the display
-  display.invertDisplay(true);
-  delay(1000);
-  display.invertDisplay(false);
-  delay(1000);
-  display.clearDisplay();
-
-  // draw a bitmap icon and 'animate' movement
-  // testdrawbitmap(logo16_glcd_bmp, LOGO16_GLCD_HEIGHT, LOGO16_GLCD_WIDTH);
+    // text display tests
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0,0);
+    display.println("Hello, world!");
+    display.setTextColor(BLACK, WHITE); // 'inverted' text
+    display.println(3.141592);
+    display.setTextSize(2);
+    display.setTextColor(WHITE);
+    display.print("0x"); display.println(0xDEADBEEF, HEX);
+    display.display();
+    delay(2000);
+    display.clearDisplay();
 }
 
 void setup() {
     Serial.begin (BAUD_RATE);
     Serial.println("Starting");
-    // Wire.begin();
-    byte screenAddress = getOledScreenAddress();
-    setupOledScreen(screenAddress);
+    //Wire.begin();
+    setupOledScreen();
 
     Serial.println("Started");
 }
