@@ -1,4 +1,4 @@
-update=Fri 08 Sep 2017 09:03:37 PM PDT
+update=Wednesday, October 04, 2017 'PMt' 05:02:24 PM
 version=1
 last_client=kicad
 [pcbnew]
@@ -59,3 +59,4 @@ LibName27=atmel
 LibName28=contrib
 LibName29=valves
 LibName30=switches
+LibName31=libs/AtMegaProgrammer_Parts/AtMegaProgramerParts

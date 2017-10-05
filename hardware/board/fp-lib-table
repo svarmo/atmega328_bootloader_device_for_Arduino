@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name AtMegaProgrammer)(type KiCad)(uri "$(KIPRJMOD)/libs/AtMegaProgrammer.pretty")(options "")(descr ""))
+)

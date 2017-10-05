@@ -1,0 +1,195 @@
+Cmp-Mod V01 Created by PcbNew   date = Wednesday, October 04, 2017 'PMt' 07:30:54 PM
+
+BeginCmp
+TimeStamp = 59D57A25
+Path = /59B3690C
+Reference = C1;
+ValeurCmp = CP1;
+IdModule  = Capacitors_Tantalum_SMD:CP_Tantalum_Case-A_EIA-3216-18_Reflow;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57A36
+Path = /59B3820A
+Reference = C2;
+ValeurCmp = C;
+IdModule  = Capacitors_SMD:C_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57A4A
+Path = /59B3694C
+Reference = C3;
+ValeurCmp = CP1;
+IdModule  = Capacitors_Tantalum_SMD:CP_Tantalum_Case-A_EIA-3216-18_Reflow;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57A5B
+Path = /59B36875
+Reference = C4;
+ValeurCmp = C;
+IdModule  = Capacitors_SMD:C_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57A6C
+Path = /59B37EC2
+Reference = C5;
+ValeurCmp = C;
+IdModule  = Capacitors_SMD:C_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57A7D
+Path = /59B3C707
+Reference = C6;
+ValeurCmp = C;
+IdModule  = Capacitors_SMD:C_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57A93
+Path = /59B3CBD4
+Reference = D1;
+ValeurCmp = PWR_G;
+IdModule  = LEDs:LED_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57AA9
+Path = /59C6F714
+Reference = D2;
+ValeurCmp = CONN_W;
+IdModule  = LEDs:LED_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57ABF
+Path = /59C6F988
+Reference = D3;
+ValeurCmp = OK_G;
+IdModule  = LEDs:LED_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57AD5
+Path = /59C6FA61
+Reference = D4;
+ValeurCmp = ERROR_R;
+IdModule  = LEDs:LED_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57AEF
+Path = /59B365CA
+Reference = J1;
+ValeurCmp = ISP_Programmer;
+IdModule  = Pin_Headers:Pin_Header_Straight_1x06_Pitch2.00mm;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57B07
+Path = /59D5807D
+Reference = J2;
+ValeurCmp = OLED_VCC_GND;
+IdModule  = AtMegaProgrammer:OLED_VCC_GND;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57B49
+Path = /59B366A1
+Reference = J5;
+ValeurCmp = CONN_01X02;
+IdModule  = Pin_Headers:Pin_Header_Straight_1x02_Pitch2.00mm;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57B5A
+Path = /59B3CB9B
+Reference = R1;
+ValeurCmp = R;
+IdModule  = Resistors_SMD:R_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57B6B
+Path = /59B3A4BD
+Reference = R2;
+ValeurCmp = R;
+IdModule  = Resistors_SMD:R_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57B7C
+Path = /59B37E85
+Reference = R3;
+ValeurCmp = R;
+IdModule  = Resistors_SMD:R_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57B8D
+Path = /59C6F6C9
+Reference = R4;
+ValeurCmp = R;
+IdModule  = Resistors_SMD:R_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57B9E
+Path = /59C6F982
+Reference = R5;
+ValeurCmp = R;
+IdModule  = Resistors_SMD:R_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57BAF
+Path = /59C6FA5B
+Reference = R6;
+ValeurCmp = R;
+IdModule  = Resistors_SMD:R_0805;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57BCA
+Path = /59B37DA2
+Reference = SW1;
+ValeurCmp = SW_Push;
+IdModule  = Buttons_Switches_SMD:SW_SPST_FSMSM;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57BE5
+Path = /59B3A411
+Reference = SW2;
+ValeurCmp = SW_Push;
+IdModule  = Buttons_Switches_SMD:SW_SPST_FSMSM;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57BFA
+Path = /59B3626A
+Reference = U1;
+ValeurCmp = MIC5219-3.3BM5;
+IdModule  = TO_SOT_Packages_SMD:SOT-23-5;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57C31
+Path = /59B3767B
+Reference = U2;
+ValeurCmp = ATMEGA328-AU;
+IdModule  = Housings_QFP:TQFP-32_7x7mm_Pitch0.8mm;
+EndCmp
+
+BeginCmp
+TimeStamp = 59D57B33
+Path = /59B39166
+Reference = J4;
+ValeurCmp = CONN_02X16;
+IdModule  = AtMegaProgrammer:ProgSocket;
+EndCmp
+
+EndListe
