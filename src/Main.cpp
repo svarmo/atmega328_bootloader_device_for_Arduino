@@ -5,6 +5,9 @@
 #include "Arduino.h"
 #include <avr/pgmspace.h>
 #include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 #include "Constants.h"
 #include "SerialUtility.h"
@@ -12,8 +15,34 @@
 
 #define BAUD_RATE 9600
 #define SELECT_BUTTON_PIN 2
+#define OLED_RESET 4
+#define LOGO16_GLCD_HEIGHT 16
+#define LOGO16_GLCD_WIDTH 16
 
-// bootloaderType currentBootloader;
+Adafruit_SSD1306 display;
+// static const unsigned char PROGMEM logo16_glcd_bmp[] = {};
+
+void setupOledScreen() {
+    Serial.println("Screen sequence");
+    display.begin(0x3C);
+
+    display.display();
+    delay(2000);
+
+    // Clear the buffer.
+    display.clearDisplay();
+
+    // text display tests
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0,0);
+    display.println("Starting up");
+    display.display();
+    delay(2000);
+    display.clearDisplay();
+
+    Serial.println("done");
+}
 
 void printFuseBytes() {
     byte lowFuseByte = readFuse(LOW_FUSE);
@@ -37,7 +66,7 @@ void printFuseBytes() {
 }
 
 // burn the bootloader to the target device
-void writeBootloader() {
+int writeBootloader() {
     byte lFuse = readFuse(LOW_FUSE);
     byte newlFuse = atMega328Bootloader.lowFuse;
     byte newhFuse = atMega328Bootloader.highFuse;
@@ -62,7 +91,7 @@ void writeBootloader() {
         delay (1000);
         stopProgramming ();  // latch fuse
         if (!startProgramming ()) {
-            return;
+            return 1; // Error message, unable to reset fuses
         }
         delay (1000);
     }
@@ -114,7 +143,7 @@ void writeBootloader() {
     } else {
         Serial.print(errors, DEC);
         Serial.println(F(" verification error(s)."));
-        return;  // don't change fuses if errors
+        return 2;  // don't change fuses if error --> Error message, Verification error
     }  // end if
 
     Serial.println(F("\nWriting fuses ..."));
@@ -127,24 +156,34 @@ void writeBootloader() {
     // confirm them
     printFuseBytes();
     Serial.println(F("Done."));
+    return 0; // No error message
 }
 
-
-
-// void bootloadingInterruptCallback() {
-//     Serial.println("In Callback");
-//     if (millis() - lastInterrupt >= 5000) {
-//         lastInterrupt = millis();
-//         executeBootloading = true;
-//     }
-// }
-
 void programBootloader() {
+    display.setCursor(0,0);
+    display.print("Connecting -> ");
+    display.display();
     if (startProgramming()) {
+        display.println("ok");
+        display.println("Writing bootloader");
+        display.display();
+
         getSignature();
         printFuseBytes();
-        writeBootloader();
+        int writeResult = writeBootloader();
+        if (writeResult == 1) {
+            display.println("Unable to set fuses");
+        } else if (writeResult == 2) {
+            display.println("Verification error");
+        }
+        display.display();
+
         stopProgramming();
+        display.println("Done");
+        display.display();
+    } else {
+        display.println("fail");
+        display.display();
     }
 }
 
@@ -152,10 +191,15 @@ void setup() {
     Serial.begin (BAUD_RATE);
     Serial.println("Started");
 
+    setupOledScreen();
     initPins();
 
-    Serial.println("Waiting 2 seconds");
-    delay(2000);
+    display.setCursor(0,0);
+    display.println("Boot complete, Press button to start");
+    display.display();
+    display.clearDisplay();
+    Serial.println("Done");
+
     programBootloader();
 }
 
